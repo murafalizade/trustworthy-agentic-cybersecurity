@@ -1,0 +1,25 @@
+[project]
+name = "cybersecurity-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "muradeliyev", email = "muradaliyev2229@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "feedparser>=6.0.14",
+    "langchain-core>=1.6.5",
+    "langchain-nvidia-ai-endpoints>=1.4.3",
+    "pydantic>=2.13.5",
+    "requests>=2.34.2",
+    "streamlit>=1.64.0",
+]
+
+[project.scripts]
+cybersecurity-agent = "cybersecurity_agent:main"
+
+[build-system]
+requires = ["uv_build>=0.9.13,<0.10.0"]
+build-backend = "uv_build"
