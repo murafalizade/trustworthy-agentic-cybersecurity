@@ -1,3 +1,4 @@
+import time
 from typing import Callable, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -7,6 +8,7 @@ from cybersecurity_agent.agents.cti_agents.model import ThreatAlert
 from cybersecurity_agent.agents.id_agents.model import IDDecision
 from cybersecurity_agent.agents.id_agents.tools import block_ip, revoke_user, run_sql, run_bash
 from cybersecurity_agent.config import get_nvidia_api_key
+from cybersecurity_agent.tracing import log_trace, new_trace_id
 
 
 class IDAgent:
@@ -19,6 +21,7 @@ class IDAgent:
         (received/decision/action_result/error) for the Streamlit UI to render.
         """
         self.on_event = on_event
+        self.model_name = model_name
         self.llm = ChatNVIDIA(
             model=model_name,
             api_key=get_nvidia_api_key(),
@@ -48,42 +51,62 @@ class IDAgent:
         if self.on_event:
             self.on_event({"agent": "ID", "type": event_type, **payload})
 
-    def receive_alert(self, alert: ThreatAlert, raw_text: str = "") -> IDDecision:
-        """Receives a ThreatAlert handed off from the CTI Agent and decides whether to act."""
+    def receive_alert(self, alert: ThreatAlert, raw_text: str = "", trace_id: Optional[str] = None) -> IDDecision:
+        """
+        Receives a ThreatAlert handed off from the CTI Agent and decides whether
+        to act. `trace_id` is passed through from the CTI Agent so the decision
+        (and any resulting action) can be correlated with the CTI analysis that
+        triggered it; one is minted here if called standalone.
+        """
+        trace_id = trace_id or new_trace_id()
         print("\n[ID Agent] Received alert from CTI Agent.")
-        self._emit("received", alert=alert.model_dump())
+        self._emit("received", alert=alert.model_dump(), trace_id=trace_id)
+
+        prompt_payload = {"alert": alert.model_dump(), "raw_text": raw_text}
+        start = time.monotonic()
+        error: Optional[str] = None
         try:
-            decision: IDDecision = self.chain.invoke({
+            decision: Optional[IDDecision] = self.chain.invoke({
                 "alert_json": alert.model_dump_json(indent=2),
                 "raw_text": raw_text,
             })
         except Exception as e:
             print(f"[!] ID Agent failed to produce a structured decision: {e}")
-            decision = IDDecision(
-                should_act=False, action="none",
-                reasoning=f"Decision generation failed, defaulting to no action: {e}"
-            )
-            self._emit("error", error=str(e))
+            decision = None
+            error = str(e)
+
+        latency_ms = (time.monotonic() - start) * 1000
 
         if decision is None:
-            print("[!] ID Agent returned no structured decision (model likely refused or failed to conform to schema).")
+            if error is None:
+                print("[!] ID Agent returned no structured decision (model likely refused or failed to conform to schema).")
+                error = "LLM returned None instead of a structured IDDecision"
             decision = IDDecision(
                 should_act=False, action="none",
-                reasoning="LLM returned None instead of a structured decision, defaulting to no action"
+                reasoning=f"Decision generation failed, defaulting to no action: {error}"
             )
-            self._emit("error", error="LLM returned None instead of a structured IDDecision")
+            log_trace(
+                trace_id, "ID", self.model_name, prompt_payload, None,
+                event="decision", error=error, latency_ms=latency_ms,
+            )
+            self._emit("error", error=error, trace_id=trace_id)
+        else:
+            log_trace(
+                trace_id, "ID", self.model_name, prompt_payload, decision.model_dump(),
+                event="decision", latency_ms=latency_ms,
+            )
 
         print(decision)
-        self._emit("decision", decision=decision.model_dump())
+        self._emit("decision", decision=decision.model_dump(), trace_id=trace_id)
 
         if decision.should_act and decision.action != "none" and decision.target:
-            self._execute(decision)
+            self._execute(decision, trace_id)
         else:
             print("[ID Agent Decision]: No action taken.")
 
         return decision
 
-    def _execute(self, decision: IDDecision):
+    def _execute(self, decision: IDDecision, trace_id: Optional[str] = None):
         print(f"\n[ID Agent]: Executing action '{decision.action}' -> {decision.target}")
         if decision.action == "block_ip":
             result = block_ip(decision.target)
@@ -95,4 +118,9 @@ class IDAgent:
             result = revoke_user(decision.target)
         else:
             result = None
-        self._emit("action_result", action=decision.action, target=decision.target, result=result)
+        log_trace(
+            trace_id or new_trace_id(), "ID", self.model_name,
+            {"action": decision.action, "target": decision.target}, result,
+            event="action",
+        )
+        self._emit("action_result", action=decision.action, target=decision.target, result=result, trace_id=trace_id)

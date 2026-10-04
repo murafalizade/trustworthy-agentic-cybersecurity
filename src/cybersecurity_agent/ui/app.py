@@ -140,7 +140,9 @@ def render_event(evt: dict):
     etype = evt["type"]
 
     with st.chat_message(NAMES[agent], avatar=AVATARS[agent]):
-        st.caption(f"{evt['ts']} · {NAMES[agent]} · {etype}")
+        trace_id = evt.get("trace_id")
+        trace_suffix = f" · trace `{trace_id[:8]}`" if trace_id else ""
+        st.caption(f"{evt['ts']} · {NAMES[agent]} · {etype}{trace_suffix}")
 
         if etype == "received" and agent == "CTI":
             st.write("Received feed text:")

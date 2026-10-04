@@ -1,3 +1,4 @@
+import time
 from typing import Callable, Dict, List, Optional
 import requests
 from langchain_core.prompts import ChatPromptTemplate
@@ -11,6 +12,7 @@ from cybersecurity_agent.agents.cti_agents.tools import (
 )
 from cybersecurity_agent.agents.id_agents.agent import IDAgent
 from cybersecurity_agent.config import get_nvidia_api_key
+from cybersecurity_agent.tracing import log_trace, new_trace_id
 
 
 class CTIAgent:
@@ -22,6 +24,7 @@ class CTIAgent:
     ):
         self.id_agent = id_agent
         self.on_event = on_event
+        self.model_name = model_name
         # Connect to NVIDIA NIM Endpoint using ChatNVIDIA
         self.llm = ChatNVIDIA(
             model=model_name,
@@ -93,43 +96,64 @@ class CTIAgent:
                     self._seen_links.add(link)
                 self.process_and_route(entry_to_feed_text(entry))
 
-    def process_and_route(self, feed_item_text: str):
-        """Analyzes feed text and determines whether to dispatch to ID Agent."""
+    def process_and_route(self, feed_item_text: str, trace_id: Optional[str] = None):
+        """
+        Analyzes feed text and determines whether to dispatch to ID Agent.
+        `trace_id` ties every downstream log/trace entry (CTI analysis, ID
+        decision, remediation action) for this run together; one is minted
+        here if the caller doesn't supply one.
+        """
+        trace_id = trace_id or new_trace_id()
         print("\n--------------------------------------------------")
-        print(f"[CTI Processing Raw Text]: {feed_item_text[:120]}...")
-        self._emit("received", text=feed_item_text)
+        print(f"[CTI Processing Raw Text] (trace_id={trace_id}): {feed_item_text[:120]}...")
+        self._emit("received", text=feed_item_text, trace_id=trace_id)
 
         # Invoke LLM
+        start = time.monotonic()
         try:
             result: ThreatAlert = self.chain.invoke({"feed_text": feed_item_text})
         except Exception as e:
             print(f"[!] CTI Agent failed to produce a structured alert: {e}")
             print("[CTI Decision]: Treating as non-actionable due to extraction failure.")
-            self._emit("error", error=str(e))
+            log_trace(
+                trace_id, "CTI", self.model_name, {"feed_text": feed_item_text}, None,
+                event="analysis", error=str(e), latency_ms=(time.monotonic() - start) * 1000,
+            )
+            self._emit("error", error=str(e), trace_id=trace_id)
             return
+
+        latency_ms = (time.monotonic() - start) * 1000
 
         if result is None:
             print("[!] CTI Agent returned no structured alert (model likely refused or failed to conform to schema).")
             print("[CTI Decision]: Treating as non-actionable due to extraction failure.")
-            self._emit("error", error="LLM returned None instead of a structured ThreatAlert")
+            log_trace(
+                trace_id, "CTI", self.model_name, {"feed_text": feed_item_text}, None,
+                event="analysis", error="LLM returned None instead of a structured ThreatAlert",
+                latency_ms=latency_ms,
+            )
+            self._emit("error", error="LLM returned None instead of a structured ThreatAlert", trace_id=trace_id)
             return
 
-        print(result)
-        self._emit("analysis", alert=result.model_dump())
+        log_trace(
+            trace_id, "CTI", self.model_name, {"feed_text": feed_item_text}, result.model_dump(),
+            event="analysis", latency_ms=latency_ms,
+        )
+        self._emit("analysis", alert=result.model_dump(), trace_id=trace_id)
 
         # Decision Logic: Send to ID Agent if relevant, else do nothing
         if result.is_cybersecurity_threat:
             if self.id_agent is not None:
-                self._send_to_id_agent(result, feed_item_text)
+                self._send_to_id_agent(result, feed_item_text, trace_id)
             else:
                 print("[CTI Decision]: Threat detected but no ID Agent wired in — skipping handoff.")
-                self._emit("skipped", reason="no_id_agent_wired")
+                self._emit("skipped", reason="no_id_agent_wired", trace_id=trace_id)
         else:
             print("[CTI Decision]: NOT related to active threat. Action: Doing nothing.")
-            self._emit("benign")
+            self._emit("benign", trace_id=trace_id)
 
-    def _send_to_id_agent(self, alert: ThreatAlert, raw_text: str = ""):
+    def _send_to_id_agent(self, alert: ThreatAlert, raw_text: str = "", trace_id: Optional[str] = None):
         """Hands the structured alert off to the ID Agent for a remediation decision."""
         print("\n[CTI Decision]: THREAT DETECTED -> Routing to Intrusion Detection Agent...")
-        self._emit("handoff")
-        self.id_agent.receive_alert(alert, raw_text)
+        self._emit("handoff", trace_id=trace_id)
+        self.id_agent.receive_alert(alert, raw_text, trace_id=trace_id)
