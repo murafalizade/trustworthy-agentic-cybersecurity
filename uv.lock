@@ -330,6 +330,7 @@ dependencies = [
     { name = "langchain-core" },
     { name = "langchain-nvidia-ai-endpoints" },
     { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "requests" },
     { name = "streamlit" },
 ]
@@ -342,6 +343,7 @@ requires-dist = [
     { name = "langchain-core", specifier = ">=1.6.5" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=1.4.3" },
     { name = "pydantic", specifier = ">=2.13.5" },
+    { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "streamlit", specifier = ">=1.64.0" },
 ]

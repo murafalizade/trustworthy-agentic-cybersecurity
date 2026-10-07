@@ -7,9 +7,10 @@ from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from cybersecurity_agent.agents.cti_agents.model import ThreatAlert
 from cybersecurity_agent.agents.id_agents.model import IDDecision
 from cybersecurity_agent.agents.id_agents.tools import block_ip, revoke_user, run_sql, run_bash
-from cybersecurity_agent.config import get_nvidia_api_key
 from cybersecurity_agent.tracing import log_trace, new_trace_id
+from cybersecurity_agent.utils.settings import get_settings
 
+settings = get_settings()
 
 class IDAgent:
     def __init__(self, model_name: str = "meta/llama-3.1-8b-instruct", on_event: Optional[Callable[[dict], None]] = None):
@@ -24,7 +25,7 @@ class IDAgent:
         self.model_name = model_name
         self.llm = ChatNVIDIA(
             model=model_name,
-            api_key=get_nvidia_api_key(),
+            api_key=settings.NVIDIA_API_KEY.get_secret_value(),
             temperature=0.0
         )
 

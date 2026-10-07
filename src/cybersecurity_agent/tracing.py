@@ -4,13 +4,14 @@ from typing import Any, Optional
 
 from elasticsearch import Elasticsearch
 
-from cybersecurity_agent.config import get_elasticsearch_config
+from cybersecurity_agent.utils.settings import get_settings
 
 _client: Optional[Elasticsearch] = None
 _client_init_attempted = False
 _template_ensured = False
 _INDEX_TEMPLATE_NAME = "agent-traces-template"
 
+settings = get_settings()
 
 def new_trace_id() -> str:
     """Generate a fresh trace id, one per CTI->ID pipeline run."""
@@ -23,19 +24,19 @@ def _get_client() -> Optional[Elasticsearch]:
         return _client
     _client_init_attempted = True
 
-    cfg = get_elasticsearch_config()
-    if not cfg.enabled:
+    if not settings.is_trace_enable:
+        print("System is on development mode, tracing is disabled")
         return None
 
     kwargs: dict = {}
-    if cfg.api_key:
-        kwargs["api_key"] = cfg.api_key
-    elif cfg.username and cfg.password:
-        kwargs["basic_auth"] = (cfg.username, cfg.password)
+    if settings.ELASTICSEARCH_API_KEY:
+        kwargs["api_key"] = settings.ELASTICSEARCH_API_KEY
+    elif settings.ELASTICSEARCH_USERNAME and settings.ELASTICSEARCH_PASSWORD:
+        kwargs["basic_auth"] = (settings.ELASTICSEARCH_USERNAME, settings.ELASTICSEARCH_PASSWORD)
 
     try:
-        _client = Elasticsearch(cfg.url, **kwargs)
-        _ensure_index_template(_client, cfg.index)
+        _client = Elasticsearch(settings.ELASTICSEARCH_URL, **kwargs)
+        _ensure_index_template(_client, settings.index)
     except Exception as e:
         print(f"[tracing] Failed to initialize Elasticsearch client: {e}")
         _client = None
@@ -101,6 +102,6 @@ def log_trace(
         return
 
     try:
-        client.index(index=get_elasticsearch_config().index, document=doc)
+        client.index(index=settings.ELASTICSEARCH_INDEX, document=doc)
     except Exception as e:
         print(f"[tracing] Failed to write trace to Elasticsearch (trace_id={trace_id}): {e}")
