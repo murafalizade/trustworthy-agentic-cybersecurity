@@ -1,15 +1,14 @@
+import asyncio
+import atexit
 import threading
 import time
 
+import pandas as pd
 import streamlit as st
 
 from cybersecurity_agent.agents.cti_agents.agent import CTIAgent
-from cybersecurity_agent.agents.cti_agents.main import DEFAULT_ATTACK_CASES, run_attack_cases
-from cybersecurity_agent.agents.cti_agents.scheduler import run_periodic
-from cybersecurity_agent.agents.cti_agents.tools import RSS_SOURCES
-from cybersecurity_agent.agents.id_agents.agent import IDAgent
 
-st.set_page_config(page_title="CTI -> ID Agent Playground", layout="wide")
+st.set_page_config(page_title="CTI Agent Playground", layout="wide")
 
 # ---------------------------------------------------------------------------
 # Session state
@@ -21,7 +20,7 @@ defaults = {
     "id_agent": None,
     "worker_thread": None,
     "stop_event": None,
-    "worker_mode": None,  # None | "fetching" | "attack_suite"
+    "worker_mode": None,  # None | "fetching" | "reviewing"
 }
 for key, value in defaults.items():
     if key not in st.session_state:
@@ -41,9 +40,7 @@ def make_on_event():
 
 def build_agents(model_name: str):
     on_event = make_on_event()
-    id_agent = IDAgent(model_name=model_name, on_event=on_event)
-    cti_agent = CTIAgent(model_name=model_name, id_agent=id_agent, on_event=on_event)
-    st.session_state.id_agent = id_agent
+    cti_agent = CTIAgent(model_name=model_name, on_event=on_event)
     st.session_state.cti_agent = cti_agent
 
 
@@ -70,6 +67,14 @@ def stop_worker():
         st.session_state.stop_event.set()
 
 
+# Ctrl+C on the terminal running `streamlit run` doesn't reach the fetch
+# worker thread at all — it only stops Streamlit's own server loop, leaving
+# the thread (and the batch of LLM calls it's waiting on) running in the
+# background indefinitely. Firing the same stop signal on interpreter exit
+# gives that thread a chance to notice and unwind instead of being orphaned.
+atexit.register(stop_worker)
+
+
 # ---------------------------------------------------------------------------
 # Sidebar: model + controls
 # ---------------------------------------------------------------------------
@@ -82,49 +87,64 @@ with st.sidebar:
         st.success(f"Agents reloaded with model '{model_name}'.")
 
     st.divider()
-    st.subheader("RSS fetching")
-    st.caption(", ".join(RSS_SOURCES.keys()))
+    st.subheader("CTI intel ingest (KEV + AI relevance triage)")
     interval = st.number_input("Poll interval (seconds)", min_value=10, value=300, step=10)
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("▶ Start", disabled=is_busy(), key="start_fetch"):
+        if st.button("Start", disabled=is_busy(), key="start_fetch"):
             cti_agent = st.session_state.cti_agent
 
             def _fetch_worker(stop_event, cti_agent=cti_agent, interval=interval):
-                run_periodic(cti_agent, interval_seconds=int(interval), stop_event=stop_event)
+                # start_worker hands us a threading.Event (shared with the
+                # Stop button, which lives on the main thread), but
+                # run_intel_sync_periodic waits on an asyncio.Event local to
+                # this thread's own loop — bridge the two by polling.
+                async def _run():
+                    async_stop = asyncio.Event()
 
+                    async def _bridge_stop():
+                        while not stop_event.is_set():
+                            await asyncio.sleep(0.5)
+                        async_stop.set()
+
+                    bridge = asyncio.create_task(_bridge_stop())
+                    try:
+                        await cti_agent.run_intel_sync_periodic(
+                            interval_seconds=int(interval), stop_event=async_stop
+                        )
+                    finally:
+                        bridge.cancel()
+
+                asyncio.run(_run())
             start_worker("fetching", _fetch_worker)
     with col2:
         if st.button("Stop", disabled=st.session_state.worker_mode != "fetching", key="stop_fetch"):
             stop_worker()
 
-    st.divider()
-    st.subheader("Attack suite")
-    st.caption(f"Replays {DEFAULT_ATTACK_CASES.name}")
-    col3, col4 = st.columns(2)
-    with col3:
-        if st.button("Run", disabled=is_busy(), key="start_attacks"):
-            cti_agent = st.session_state.cti_agent
-
-            def _attack_worker(stop_event, cti_agent=cti_agent):
-                run_attack_cases(cti_agent, DEFAULT_ATTACK_CASES, stop_event=stop_event)
-
-            start_worker("attack_suite", _attack_worker)
-    with col4:
-        if st.button("Stop", disabled=st.session_state.worker_mode != "attack_suite", key="stop_attacks"):
-            stop_worker()
-
-# ---------------------------------------------------------------------------
-# Manual testing
-# ---------------------------------------------------------------------------
 st.title("CTI & ID Agent Playground")
+st.divider()
 
-with st.form("manual_test_form", clear_on_submit=False):
-    manual_text = st.text_area("Feed text / payload to test manually", height=100)
-    submitted = st.form_submit_button("Submit to CTI Agent")
-    if submitted and manual_text.strip():
-        with st.spinner("Processing..."):
-            st.session_state.cti_agent.process_and_route(manual_text.strip())
+
+st.subheader("CVE Intel Store")
+
+
+@st.fragment(run_every=5)
+def intel_table():
+    records = st.session_state.cti_agent.intel_store.all_cve_records()
+    if not records:
+        st.caption("No CVE intel recorded yet.")
+        return
+    df = pd.DataFrame([{
+        "CVE/Source": r.source,
+        "Description": r.description,
+        "Vulnerability": r.vulnerability,
+        "Reason": r.reason,
+        "Actions": r.actions,
+    } for r in records])
+    st.dataframe(df, width='stretch', hide_index=True)
+
+
+intel_table()
 
 st.divider()
 
@@ -144,43 +164,27 @@ def render_event(evt: dict):
         trace_suffix = f" · trace `{trace_id[:8]}`" if trace_id else ""
         st.caption(f"{evt['ts']} · {NAMES[agent]} · {etype}{trace_suffix}")
 
-        if etype == "received" and agent == "CTI":
-            st.write("Received feed text:")
-            st.code(evt["text"][:500], language=None)
-
-        elif etype == "analysis":
-            alert = evt["alert"]
-            st.write(f"🔍 **Analysis** — threat: `{alert['is_cybersecurity_threat']}`, severity: `{alert['severity']}`")
-            if alert.get("cve_or_id"):
-                st.write(f"CVE/ID: `{alert['cve_or_id']}`")
-            if alert.get("extracted_iocs"):
-                st.write("IoCs: " + ", ".join(f"`{i}`" for i in alert["extracted_iocs"]))
-            st.write(alert["summary"])
-
-        elif etype == "handoff":
-            st.write("Threat detected — handing off to **ID Agent**.")
-
-        elif etype == "skipped":
-            st.write("Threat detected, but no ID Agent is wired in.")
-
-        elif etype == "benign":
-            st.write("Not a threat. No action taken.")
-
-        elif etype == "error":
+        if etype == "error":
             st.error(f"{evt['error']}")
 
-        elif etype == "received" and agent == "ID":
-            alert = evt["alert"]
-            st.write(f"Received alert from CTI Agent (severity: `{alert['severity']}`)")
+        elif etype == "intel_received":
+            st.write(f"Reviewing CVE record `{evt['record']['source']}` from the intel store.")
 
-        elif etype == "decision":
+        elif etype == "tool_call":
+            st.write(f"🔧 **{evt['tool']}**`({evt.get('args', {})})` → `{evt['result']}`")
+
+        elif etype == "approval_requested":
+            st.warning(f"⚠️ Waiting on human approval for: `{evt['command']}`")
+
+        elif etype == "approval_resolved":
+            verdict = "✅ approved" if evt["approved"] else "❌ denied"
+            st.write(f"Command {verdict}: `{evt['command']}`")
+
+        elif etype == "intel_decision":
             d = evt["decision"]
-            st.write(f"**Decision** — should_act: `{d['should_act']}`, action: `{d['action']}`, target: `{d['target']}`")
+            tag = "defended" if d["defended"] else "left as relevant (not resolved)"
+            st.write(f"**Intel decision** — `{evt['cve_id']}` → {tag}")
             st.caption(d["reasoning"])
-
-        elif etype == "action_result":
-            st.write(f"**Executed** `{evt['action']}` → `{evt['target']}`")
-            st.json(evt["result"])
 
 
 @st.fragment(run_every=2)
@@ -192,9 +196,7 @@ def event_log():
 
     mode = st.session_state.worker_mode
     if mode == "fetching":
-        st.info(f"Polling RSS sources every {int(interval)}s...")
-    elif mode == "attack_suite":
-        st.info("Running attack suite...")
+        st.info("Running CTI intel ingest cycle...")
 
     if st.button("Clear log"):
         st.session_state.events.clear()

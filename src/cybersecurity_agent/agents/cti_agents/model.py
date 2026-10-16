@@ -2,19 +2,14 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
-class ThreatAlert(BaseModel):
-    is_cybersecurity_threat: bool = Field(
-        description="Set to true if the item describes an active cyber threat, vulnerability, or IoC."
+class RelevantCVE(BaseModel):
+    cve_id: str = Field(description="Exactly as given in the batch.")
+    reasoning: str = Field(description="1-2 sentences explaining why this is relevant.")
+
+
+class RelevantFindings(BaseModel):
+    relevant: List[RelevantCVE] = Field(
+        default_factory=list,
+        description="Only CVEs judged relevant to our systems. Omit anything irrelevant or unconfirmed entirely.",
     )
-    cve_or_id: Optional[str] = Field(
-        default=None, description="CVE identifier or vulnerability tag if present."
-    )
-    severity: str = Field(
-        default="UNKNOWN", description="Assessed severity: CRITICAL, HIGH, MEDIUM, LOW, or UNKNOWN."
-    )
-    extracted_iocs: List[str] = Field(
-        default_factory=list, description="Extracted IP addresses, malicious domains, or file hashes."
-    )
-    summary: str = Field(
-        description="A concise summary of the threat for the Intrusion Detection agent."
-    )
+
