@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from cybersecurity_agent.database.model import CVERecord
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[3] / "cybersecurity_agent" / "datasets" / "cve_intel.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parents[0]  / "cve_intel.db"
 
 _CVE_COLUMNS = "source, in_kev, epss_score, status, description, vulnerability, reason, actions, last_updated"
 _NEWS_COLUMNS = "source, status, description, last_updated"

