@@ -1,0 +1,14 @@
+{
+  "activeProfiles": ["prod"],
+  "propertySources": [
+    {
+      "name": "applicationConfig",
+      "properties": {
+        "spring.datasource.url": { "value": "jdbc:postgresql://postgres:5432/core_banking" },
+        "spring.datasource.username": { "value": "core_banking_svc" },
+        "spring.datasource.password": { "value": "CoreBank2024!" },
+        "jwt.signing.secret": { "value": "a3f9c2b1e6d4487f90a21c6e5db7f0ac" }
+      }
+    }
+  ]
+}

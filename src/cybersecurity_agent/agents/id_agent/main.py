@@ -1,12 +1,12 @@
 """Live log ingestion loop for the IDAgent.
 
-Tails the target system's logs (NOT the attacker's own campaign log or tool
-output — those are ground truth for grading, never agent input, see
-labs/README.md) from a shared read-only volume, prints every line as it
-streams in, groups repetition-sensitive logs (auth, http access) into small
-per-source-IP batches so brute-force/scan patterns are visible across lines
-rather than judged one weak line at a time, and prints an ALERTTTTT banner
-whenever the agent's verdict is an anomaly.
+Tails each banking service's own nginx access/error log (NOT the attacker's
+own campaign log or tool output — those are ground truth for grading, never
+agent input, see labs/README.md) from a shared read-only volume, prints
+every line as it streams in, groups repetition-sensitive access logs into
+small per-source-IP batches so brute-force/scan/lateral-movement patterns
+are visible across lines rather than judged one weak line at a time, and
+prints an ALERTTTTT banner whenever the agent's verdict is an anomaly.
 """
 
 import re
@@ -17,13 +17,18 @@ from cybersecurity_agent.agents.id_agent.agent import IDAgent
 
 LOG_DIR = Path("/var/log/lab")
 
-# auth.log / nginx-access.log carry the repetition signal (failed logins,
-# path scans) that only shows up across multiple lines from the same
-# source, so they're batched by IP. nginx-error.log is thinner and is more
-# useful analyzed line-by-line as corroborating context.
-BATCHED_FILES = ("auth.log", "nginx-access.log")
-LINE_BY_LINE_FILES = ("nginx-error.log",)
+# One subdirectory per banking service, each bind-mounted from that
+# service's own /var/log/nginx (see labs/banking/docker-compose.yml and
+# each service's nginx.conf access_log/error_log overrides).
+SERVICES = ("customer-portal", "core-banking", "transactions", "supply-chain")
 
+# Both access.log and error.log carry the repetition signal (path scans,
+# credential stuffing, lateral-movement probes) that only shows up across
+# multiple lines from the same source -- nginx logs a matching "open()
+# failed" error.log line for every static-file 404, so a 4-path recon
+# burst is just as visible (and just as batchable) there as in
+# access.log. Both are batched by IP so one LLM call sees the whole
+# burst instead of judging each line alone.
 POLL_INTERVAL_SECONDS = 10
 MAX_BATCH_LINES = 5
 
@@ -66,7 +71,7 @@ def _chunk(lines: list[str], size: int) -> list[list[str]]:
 def _analyze_and_report(agent: IDAgent, label: str, lines: list[str]) -> None:
     log_text = "\n".join(lines)
     try:
-        verdict = agent.analyze_log(log_text, context=f"source_file={label}")
+        verdict = agent.analyze_log(log_text)
     except Exception as exc:
         # Network hiccups / API timeouts against the LLM backend must not
         # take down a long-running watcher — log and keep tailing instead
@@ -75,42 +80,40 @@ def _analyze_and_report(agent: IDAgent, label: str, lines: list[str]) -> None:
         return
 
     if verdict.is_anomaly:
-        print(f"\nALERTTTTT: {log_text}", flush=True)
+        print(f"\nALERTTTTT [{label}]: {log_text}", flush=True)
         print(
             f"  -> severity={verdict.severity} reason={verdict.reason} "
             f"indicators={verdict.indicators}\n",
             flush=True,
         )
     else:
-        print(f"[id-agent] ok ({verdict.severity}): {verdict.reason}", flush=True)
+        print(f"[id-agent] ok [{label}] ({verdict.severity}): {verdict.reason}", flush=True)
 
 
 def main() -> None:
-    agent = IDAgent(model_name="openai/gpt-oss-20b")
-    watched = BATCHED_FILES + LINE_BY_LINE_FILES
-    tailers = {name: LogTailer(LOG_DIR / name) for name in watched}
+    agent = IDAgent(model_name="nvidia/nemotron-3.5-lightning-30b-a3b")
 
-    print(f"[id-agent] watching {LOG_DIR} for: {', '.join(watched)}", flush=True)
+    tailers: dict[str, LogTailer] = {}
+    for service in SERVICES:
+        tailers[f"{service}/access.log"] = LogTailer(LOG_DIR / service / "access.log")
+        tailers[f"{service}/error.log"] = LogTailer(LOG_DIR / service / "error.log")
+
+    print(f"[id-agent] watching {LOG_DIR} for: {', '.join(tailers)}", flush=True)
     print(f"[id-agent] polling every {POLL_INTERVAL_SECONDS}s\n", flush=True)
 
     while True:
-        for filename in watched:
-            new_lines = tailers[filename].read_new_lines()
+        for label, tailer in tailers.items():
+            new_lines = tailer.read_new_lines()
             if not new_lines:
                 continue
 
             # stream every raw line to the console as it arrives, like tail -f
             for line in new_lines:
-                print(f"[{filename}] {line}", flush=True)
+                print(f"[{label}] {line}", flush=True)
 
-            batches = (
-                _group_by_ip(new_lines) if filename in BATCHED_FILES
-                else [[line] for line in new_lines]
-            )
-
-            for batch in batches:
+            for batch in _group_by_ip(new_lines):
                 for chunk in _chunk(batch, MAX_BATCH_LINES):
-                    _analyze_and_report(agent, filename, chunk)
+                    _analyze_and_report(agent, label, chunk)
 
         # sleep between polls so we don't hammer the LLM API or risk
         # request timeouts from piling up too many batches at once

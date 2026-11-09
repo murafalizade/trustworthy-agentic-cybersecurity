@@ -1,32 +1,24 @@
 services:
-  target:
-    build: ./system
-    container_name: lab-target
-    hostname: target
-    networks:
-      - labnet
-    volumes:
-      # what a real defender would see: nginx/auth/app logs, nothing else
-      - ./logs/target:/var/log/lab
-    ports:
-      - "2222:22"
-      - "8080:80"
-
+  # Target is now labs/banking (see ../banking/docker-compose.yml) — run
+  # `docker compose up -d` there first so the `banking_dmz` network this
+  # project attaches to below already exists.
   attacker:
     build: ./attacker
     container_name: lab-attacker
-    hostname: attacker
+    hostname: lab-attacker
+    # NET_ADMIN lets the attacker add a static route to 10.10.0.0/16 via
+    # bank-router once it has a dmz foothold, the same way each banking
+    # service's own `*-route` sidecar does — this is what turns "scan the
+    # portal" into real lateral movement against app-tier/data-tier,
+    # exercising the router's wide-open FORWARD policy the lab documents.
+    cap_add: [NET_ADMIN]
     networks:
-      - labnet
+      - banking_dmz
     volumes:
-      # attacker's own campaign log + tool output — ground truth for
-      # grading the agent's verdicts, never fed to the agent itself
-      - ./logs/attacker:/var/log/lab
+      - ./banking/logs/attacker:/var/log/lab
     environment:
-      - TARGET_HOST=target
+      - TARGET_HOST=customer-portal
       - TARGET_SSH_PORT=22
-    depends_on:
-      - target
 
   agent:
     build:
@@ -34,15 +26,23 @@ services:
       dockerfile: Dockerfile
     container_name: lab-agent
     networks:
-      - labnet
+      - banking_dmz
     volumes:
-      - ./logs/target:/var/log/lab:ro
+      # Independent defender-side evidence: each service's own nginx
+      # access/error log, bind-mounted read-only from banking's own
+      # docker-compose.yml (see labs/banking/docker-compose.yml and each
+      # service's nginx.conf). The attacker's own campaign log is
+      # deliberately NOT mounted here — it's attacker ground truth for
+      # grading, never agent input (see agents/id_agent/main.py).
+      - ./banking/logs/customer-portal:/var/log/lab/customer-portal:ro
+      - ./banking/logs/core-banking:/var/log/lab/core-banking:ro
+      - ./banking/logs/transactions:/var/log/lab/transactions:ro
+      - ./banking/logs/supply-chain:/var/log/lab/supply-chain:ro
     env_file:
       - ../.env
     command: ["uv", "run", "python", "-u", "-m", "cybersecurity_agent.agents.id_agent.main"]
-    depends_on:
-      - target
 
 networks:
-  labnet:
-    driver: bridge
+  banking_dmz:
+    external: true
+    name: banking_dmz

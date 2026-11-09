@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 class AnomalyVerdict(BaseModel):
     """Structured verdict for one log entry or batch of related log entries."""
+    analysis: str = Field(
+        description="Step-by-step reasoning. Evaluate if this is an actual attack, or just operational noise like a single failed login. Cite tool results.")
 
     is_anomaly: bool = Field(
         description="True if the log(s) show anomalous, suspicious, or malicious activity that "

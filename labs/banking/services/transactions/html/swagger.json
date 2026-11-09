@@ -1,0 +1,10 @@
+{
+  "openapi": "3.0.0",
+  "info": { "title": "txn-service internal API", "version": "1.9.0" },
+  "paths": {
+    "/internal/ledger/transfer": { "post": { "summary": "Move funds between accounts, no external auth required (internal network trust)" } },
+    "/internal/ledger/reverse": { "post": { "summary": "Reverse a settled transaction" } },
+    "/internal/admin/reindex": { "post": { "summary": "Rebuild ledger search index" } },
+    "/internal/debug/sql": { "post": { "summary": "Run an ad-hoc read-only SQL query against the ledger DB (debug build only)" } }
+  }
+}
