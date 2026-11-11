@@ -1,0 +1,38 @@
+{
+  "description": "Parse nginx's native error-log line format into structured fields (nginx has no log_format for error_log, so this has to happen server-side instead of at the source).",
+  "processors": [
+    {
+      "grok": {
+        "field": "message",
+        "patterns": [
+          "%{NOTSPACE:nginx.error.time} \\[%{DATA:nginx.error.level}\\] %{NUMBER:nginx.error.pid}#%{NUMBER:nginx.error.tid}: (\\*%{NUMBER:nginx.error.connection_id} )?%{GREEDYDATA:nginx.error.message}"
+        ],
+        "ignore_failure": true
+      }
+    },
+    {
+      "grok": {
+        "field": "nginx.error.message",
+        "patterns": [
+          "^(?:%{DATA:nginx.error.reason}, )?client: %{IPORHOST:nginx.error.client}, server: %{DATA:nginx.error.server}(?:, request: \"%{DATA:nginx.error.request}\")?(?:, host: \"%{DATA:nginx.error.host}\")?(?:, upstream: \"%{DATA:nginx.error.upstream}\")?(?:, referrer: \"%{DATA:nginx.error.referrer}\")?$",
+          "%{GREEDYDATA:nginx.error.reason}"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "date": {
+        "field": "nginx.error.time",
+        "target_field": "@timestamp",
+        "formats": ["yyyy/MM/dd HH:mm:ss"],
+        "timezone": "UTC",
+        "ignore_failure": true
+      }
+    },
+    { "remove": { "field": "nginx.error.time", "ignore_failure": true } }
+  ],
+  "on_failure": [
+    { "set": { "field": "error.message", "value": "{{ _ingest.on_failure_message }}" } }
+  ]
+}

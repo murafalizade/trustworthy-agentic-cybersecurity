@@ -1,0 +1,112 @@
+###############################################################################
+# Ships the 4 banking services' nginx logs into Elasticsearch.
+#
+# access.log is already structured JSON (see each service's nginx.conf,
+# json_analytics log_format) and is decoded as-is. error.log is nginx's
+# fixed native text format -- it is NOT JSON at the source, so it is parsed
+# into structured fields server-side by the banking-error-pipeline ingest
+# pipeline instead (see ../filebeat/pipelines/banking-error-pipeline.json).
+###############################################################################
+
+filebeat.inputs:
+  - type: log
+    id: customer-portal-access
+    paths: ["/var/log/banking/customer-portal/access.log"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: customer-portal
+      log_type: access
+    fields_under_root: true
+    pipeline: banking-access-pipeline
+    # Drop the /api/health poller noise so it doesn't dilute anomaly baselines.
+    processors:
+      - drop_event:
+          when:
+            equals:
+              request_uri: /api/health
+
+  - type: log
+    id: customer-portal-error
+    paths: ["/var/log/banking/customer-portal/error.log"]
+    fields:
+      service: customer-portal
+      log_type: error
+    fields_under_root: true
+    pipeline: banking-error-pipeline
+
+  - type: log
+    id: core-banking-access
+    paths: ["/var/log/banking/core-banking/access.log"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: core-banking
+      log_type: access
+    fields_under_root: true
+    pipeline: banking-access-pipeline
+
+  - type: log
+    id: core-banking-error
+    paths: ["/var/log/banking/core-banking/error.log"]
+    fields:
+      service: core-banking
+      log_type: error
+    fields_under_root: true
+    pipeline: banking-error-pipeline
+
+  - type: log
+    id: transactions-access
+    paths: ["/var/log/banking/transactions/access.log"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: transactions
+      log_type: access
+    fields_under_root: true
+    pipeline: banking-access-pipeline
+
+  - type: log
+    id: transactions-error
+    paths: ["/var/log/banking/transactions/error.log"]
+    fields:
+      service: transactions
+      log_type: error
+    fields_under_root: true
+    pipeline: banking-error-pipeline
+
+  - type: log
+    id: supply-chain-access
+    paths: ["/var/log/banking/supply-chain/access.log"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: supply-chain
+      log_type: access
+    fields_under_root: true
+    pipeline: banking-access-pipeline
+
+  - type: log
+    id: supply-chain-error
+    paths: ["/var/log/banking/supply-chain/error.log"]
+    fields:
+      service: supply-chain
+      log_type: error
+    fields_under_root: true
+    pipeline: banking-error-pipeline
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "banking-%{[log_type]}-%{+yyyy.MM.dd}"
+
+setup.template.name: "banking-nginx"
+setup.template.pattern: "banking-*"
+setup.template.enabled: true
+setup.ilm.enabled: false
+
+logging.level: info
+logging.to_stderr: true

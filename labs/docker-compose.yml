@@ -42,6 +42,70 @@ services:
       - ../.env
     command: ["uv", "run", "python", "-u", "-m", "cybersecurity_agent.agents.id_agent.main"]
 
+  # --- Defender-side log pipeline: ships each banking service's own
+  # access/error logs into Elasticsearch so the AI can query structured,
+  # typed log data instead of (or alongside) the id_agent's raw file tail
+  # above. Deliberately on its own default network, not banking_dmz — it
+  # has no reason to be reachable from the lab's attack surface.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: lab-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - lab_es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -s http://localhost:9200/_cluster/health | grep -q '"status":"green"\|"status":"yellow"'
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: lab-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  filebeat-setup:
+    image: curlimages/curl:8.9.1
+    container_name: lab-filebeat-setup
+    volumes:
+      - ../filebeat:/filebeat:ro
+    entrypoint: ["sh", "/filebeat/setup.sh"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    container_name: lab-filebeat
+    user: root
+    command: ["--strict.perms=false"]
+    volumes:
+      - ../filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./banking/logs/customer-portal:/var/log/banking/customer-portal:ro
+      - ./banking/logs/core-banking:/var/log/banking/core-banking:ro
+      - ./banking/logs/transactions:/var/log/banking/transactions:ro
+      - ./banking/logs/supply-chain:/var/log/banking/supply-chain:ro
+    depends_on:
+      filebeat-setup:
+        condition: service_completed_successfully
+
+volumes:
+  lab_es_data:
+
 networks:
   banking_dmz:
     external: true

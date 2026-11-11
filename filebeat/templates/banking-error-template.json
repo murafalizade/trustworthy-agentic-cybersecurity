@@ -1,0 +1,25 @@
+{
+  "index_patterns": ["banking-error-*"],
+  "priority": 500,
+  "template": {
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "service": { "type": "keyword" },
+        "log_type": { "type": "keyword" },
+        "message": { "type": "text" },
+        "nginx.error.level": { "type": "keyword" },
+        "nginx.error.pid": { "type": "integer" },
+        "nginx.error.tid": { "type": "integer" },
+        "nginx.error.connection_id": { "type": "keyword" },
+        "nginx.error.reason": { "type": "text" },
+        "nginx.error.client": { "type": "ip" },
+        "nginx.error.server": { "type": "keyword" },
+        "nginx.error.request": { "type": "keyword" },
+        "nginx.error.host": { "type": "keyword" },
+        "nginx.error.upstream": { "type": "keyword" },
+        "nginx.error.referrer": { "type": "keyword" }
+      }
+    }
+  }
+}

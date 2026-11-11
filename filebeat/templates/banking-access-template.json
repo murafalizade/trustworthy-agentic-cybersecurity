@@ -1,0 +1,26 @@
+{
+  "index_patterns": ["banking-access-*"],
+  "priority": 500,
+  "template": {
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "service": { "type": "keyword" },
+        "log_type": { "type": "keyword" },
+        "remote_addr": { "type": "ip" },
+        "request_method": { "type": "keyword" },
+        "request_uri": { "type": "keyword" },
+        "status": { "type": "integer" },
+        "body_bytes_sent": { "type": "long" },
+        "request_time": { "type": "float" },
+        "upstream_response_time": { "type": "float" },
+        "http_referrer": { "type": "keyword" },
+        "http_user_agent": {
+          "type": "text",
+          "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } }
+        },
+        "http_x_forwarded_for": { "type": "keyword" }
+      }
+    }
+  }
+}

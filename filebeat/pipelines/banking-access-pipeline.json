@@ -1,0 +1,28 @@
+{
+  "description": "Normalize banking nginx JSON access-log fields: real @timestamp, numeric types instead of quoted strings.",
+  "processors": [
+    {
+      "date": {
+        "field": "time_local",
+        "target_field": "@timestamp",
+        "formats": ["dd/MMM/yyyy:HH:mm:ss Z"]
+      }
+    },
+    { "remove": { "field": "time_local", "ignore_failure": true } },
+    {
+      "remove": {
+        "field": "upstream_response_time",
+        "if": "ctx.upstream_response_time == '-' || ctx.upstream_response_time == ''",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    { "convert": { "field": "status", "type": "integer", "ignore_missing": true, "ignore_failure": true } },
+    { "convert": { "field": "body_bytes_sent", "type": "long", "ignore_missing": true, "ignore_failure": true } },
+    { "convert": { "field": "request_time", "type": "float", "ignore_missing": true, "ignore_failure": true } },
+    { "convert": { "field": "upstream_response_time", "type": "float", "ignore_missing": true, "ignore_failure": true } }
+  ],
+  "on_failure": [
+    { "set": { "field": "error.message", "value": "{{ _ingest.on_failure_message }}" } }
+  ]
+}
