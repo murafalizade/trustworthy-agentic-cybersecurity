@@ -38,6 +38,17 @@ services:
       data-tier: { ipv4_address: 10.10.3.250 }
       mgmt: { ipv4_address: 10.10.4.250 }
 
+  # --- Network IDS sensor, sharing the router's netns so it sees every
+  # inter-segment hop the router's wide-open FORWARD policy allows.
+  router-suricata:
+    build: ./router-suricata
+    container_name: bank-router-suricata
+    network_mode: "service:router"
+    cap_add: [NET_ADMIN, NET_RAW]
+    depends_on: [router]
+    volumes:
+      - ./logs/router:/var/log/suricata
+
   # --- Public-facing online banking portal (DMZ)
   customer-portal:
     build: ./services/customer-portal
@@ -139,51 +150,6 @@ services:
     cap_add: [NET_ADMIN]
     command: ["sh", "-c", "apk add --no-cache iproute2 >/dev/null 2>&1 && ip route replace 10.10.0.0/16 via 10.10.3.250"]
     depends_on: [postgres, router]
-    restart: "no"
-
-  # --- Observability (mgmt tier)
-  prometheus:
-    image: prom/prometheus:v2.53.0
-    container_name: bank-prometheus
-    hostname: prometheus
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    networks:
-      mgmt: { ipv4_address: 10.10.4.10 }
-    depends_on: [router]
-    ports:
-      - "9090:9090"
-
-  prometheus-route:
-    image: alpine:3.19
-    network_mode: "service:prometheus"
-    cap_add: [NET_ADMIN]
-    command: ["sh", "-c", "apk add --no-cache iproute2 >/dev/null 2>&1 && ip route replace 10.10.0.0/16 via 10.10.4.250"]
-    depends_on: [prometheus, router]
-    restart: "no"
-
-  grafana:
-    image: grafana/grafana:11.1.0
-    container_name: bank-grafana
-    hostname: grafana
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana_data:/var/lib/grafana
-    networks:
-      mgmt: { ipv4_address: 10.10.4.11 }
-    depends_on: [router]
-    ports:
-      - "3000:3000"
-
-  grafana-route:
-    image: alpine:3.19
-    network_mode: "service:grafana"
-    cap_add: [NET_ADMIN]
-    command: ["sh", "-c", "apk add --no-cache iproute2 >/dev/null 2>&1 && ip route replace 10.10.0.0/16 via 10.10.4.250"]
-    depends_on: [grafana, router]
     restart: "no"
 
   node-exporter:

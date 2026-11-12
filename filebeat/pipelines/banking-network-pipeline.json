@@ -1,0 +1,20 @@
+{
+  "description": "Normalize Suricata eve.json network records: real @timestamp from Suricata's own timestamp field, numeric types instead of strings.",
+  "processors": [
+    {
+      "date": {
+        "field": "timestamp",
+        "target_field": "@timestamp",
+        "formats": ["ISO8601"]
+      }
+    },
+    { "remove": { "field": "timestamp", "ignore_failure": true } },
+    { "convert": { "field": "src_port", "type": "integer", "ignore_missing": true, "ignore_failure": true } },
+    { "convert": { "field": "dest_port", "type": "integer", "ignore_missing": true, "ignore_failure": true } },
+    { "convert": { "field": "alert.severity", "type": "integer", "ignore_missing": true, "ignore_failure": true } },
+    { "convert": { "field": "alert.signature_id", "type": "long", "ignore_missing": true, "ignore_failure": true } }
+  ],
+  "on_failure": [
+    { "set": { "field": "error.message", "value": "{{ _ingest.on_failure_message }}" } }
+  ]
+}

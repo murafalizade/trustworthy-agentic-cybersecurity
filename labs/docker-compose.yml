@@ -99,6 +99,7 @@ services:
       - ./banking/logs/core-banking:/var/log/banking/core-banking:ro
       - ./banking/logs/transactions:/var/log/banking/transactions:ro
       - ./banking/logs/supply-chain:/var/log/banking/supply-chain:ro
+      - ./banking/logs/router:/var/log/banking/router:ro
     depends_on:
       filebeat-setup:
         condition: service_completed_successfully

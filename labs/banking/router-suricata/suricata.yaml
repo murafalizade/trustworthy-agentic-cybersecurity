@@ -1,0 +1,61 @@
+%YAML 1.1
+---
+# Minimal IDS config for the router container. The router is the one
+# box with a leg in every segment (dmz/app-tier/data-tier/mgmt), so
+# sniffing all four interfaces here is the only way to see cross-segment
+# traffic -- no single service's own nginx log shows that.
+
+vars:
+  address-groups:
+    HOME_NET: "[10.10.0.0/16]"
+    EXTERNAL_NET: "!$HOME_NET"
+    DMZ_NET: "[10.10.1.0/24]"
+    APP_NET: "[10.10.2.0/24]"
+    DATA_NET: "[10.10.3.0/24]"
+    MGMT_NET: "[10.10.4.0/24]"
+
+default-log-dir: /var/log/suricata/
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert
+        - flow
+        - dns
+        - http
+        - ssh
+
+af-packet:
+  - interface: eth0
+    threads: 1
+    cluster-id: 1
+    cluster-type: cluster_flow
+    defrag: yes
+  - interface: eth1
+    threads: 1
+    cluster-id: 2
+    cluster-type: cluster_flow
+    defrag: yes
+  - interface: eth2
+    threads: 1
+    cluster-id: 3
+    cluster-type: cluster_flow
+    defrag: yes
+  - interface: eth3
+    threads: 1
+    cluster-id: 4
+    cluster-type: cluster_flow
+    defrag: yes
+
+default-rule-path: /etc/suricata/rules
+rule-files:
+  - local.rules
+
+classification-file: /etc/suricata/classification.config
+reference-config-file: /etc/suricata/reference.config
+
+logging:
+  default-log-level: notice

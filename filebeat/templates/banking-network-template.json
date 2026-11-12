@@ -1,0 +1,30 @@
+{
+  "index_patterns": ["banking-network-*"],
+  "priority": 500,
+  "template": {
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "service": { "type": "keyword" },
+        "log_type": { "type": "keyword" },
+        "event_type": { "type": "keyword" },
+        "proto": { "type": "keyword" },
+        "src_ip": { "type": "ip" },
+        "src_port": { "type": "integer" },
+        "dest_ip": { "type": "ip" },
+        "dest_port": { "type": "integer" },
+        "alert": {
+          "properties": {
+            "signature": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } }
+            },
+            "category": { "type": "keyword" },
+            "severity": { "type": "integer" },
+            "signature_id": { "type": "long" }
+          }
+        }
+      }
+    }
+  }
+}

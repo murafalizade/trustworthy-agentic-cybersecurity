@@ -99,6 +99,29 @@ filebeat.inputs:
     fields_under_root: true
     pipeline: banking-error-pipeline
 
+  # Network-layer IDS feed: Suricata on bank-router sees cross-segment
+  # traffic (dmz/app-tier/data-tier/mgmt) that none of the services' own
+  # nginx logs do -- see labs/banking/router-suricata/suricata.yaml and
+  # local.rules.
+  - type: log
+    id: router-network
+    paths: ["/var/log/banking/router/eve.json"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: router
+      log_type: network
+    fields_under_root: true
+    pipeline: banking-network-pipeline
+    # IPv6 neighbor-discovery/multicast flow noise -- background Docker
+    # network chatter, not security-relevant traffic.
+    processors:
+      - drop_event:
+          when:
+            equals:
+              proto: "IPv6-ICMP"
+
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
   index: "banking-%{[log_type]}-%{+yyyy.MM.dd}"
