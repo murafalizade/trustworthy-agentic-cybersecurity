@@ -18,7 +18,6 @@ networks:
 
 volumes:
   pg_data:
-  grafana_data:
 
 services:
   # --- Edge router/firewall: the only container with a leg in every
@@ -49,91 +48,100 @@ services:
     volumes:
       - ./logs/router:/var/log/suricata
 
-  # --- Public-facing online banking portal (DMZ)
+  # --- Public-facing online banking portal (DMZ). Talks to Postgres on
+  # the data-tier by IP, not hostname -- it's only on the dmz network, so
+  # Docker DNS won't resolve "postgres" for it; the route to 10.10.3.10
+  # only works at all because of the router's wide-open FORWARD policy
+  # (see router/entrypoint.sh) plus the `ip route replace` this
+  # container's own entrypoint.sh applies on every start (NET_ADMIN
+  # below is what lets it do that itself, instead of a one-shot sidecar
+  # that goes stale the moment this container is recreated).
   customer-portal:
     build: ./services/customer-portal
     container_name: bank-customer-portal
     hostname: customer-portal
+    cap_add: [NET_ADMIN]
     networks:
       dmz: { ipv4_address: 10.10.1.10 }
     depends_on: [router]
+    environment:
+      - POSTGRES_HOST=10.10.3.10
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=core_banking
+      - POSTGRES_USER=core_banking_svc
+      - POSTGRES_PASSWORD=CoreBank2024!
+      - SECRET_KEY=customer-portal-dev-secret-change-me
     ports:
       - "8081:80"
     volumes:
       - ./logs/customer-portal:/var/log/nginx
 
-  customer-portal-route:
-    image: alpine:3.19
-    network_mode: "service:customer-portal"
-    cap_add: [NET_ADMIN]
-    command: ["sh", "-c", "apk add --no-cache iproute2 >/dev/null 2>&1 && ip route replace 10.10.0.0/16 via 10.10.1.250"]
-    depends_on: [customer-portal, router]
-    restart: "no"
-
-  # --- Core banking API gateway (app tier)
+  # --- Core banking API gateway (app tier). Internal accounts API over
+  # the same core_banking DB/table customer-portal uses -- the lab's
+  # "noisy neighbor" theme: separate services, no network isolation
+  # between what touches the same rows.
   core-banking:
     build: ./services/core-banking
     container_name: bank-core-banking
     hostname: core-banking
+    cap_add: [NET_ADMIN]
     networks:
       app-tier: { ipv4_address: 10.10.2.10 }
     depends_on: [router]
+    environment:
+      - POSTGRES_HOST=10.10.3.10
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=core_banking
+      - POSTGRES_USER=core_banking_svc
+      - POSTGRES_PASSWORD=CoreBank2024!
     volumes:
       - ./logs/core-banking:/var/log/nginx
-
-  core-banking-route:
-    image: alpine:3.19
-    network_mode: "service:core-banking"
-    cap_add: [NET_ADMIN]
-    command: ["sh", "-c", "apk add --no-cache iproute2 >/dev/null 2>&1 && ip route replace 10.10.0.0/16 via 10.10.2.250"]
-    depends_on: [core-banking, router]
-    restart: "no"
 
   # --- Transactions/ledger service (app tier)
   transactions:
     build: ./services/transactions
     container_name: bank-transactions
     hostname: transactions
+    cap_add: [NET_ADMIN]
     networks:
       app-tier: { ipv4_address: 10.10.2.11 }
     depends_on: [router]
+    environment:
+      - POSTGRES_HOST=10.10.3.10
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=transactions
+      - POSTGRES_USER=transactions_svc
+      - POSTGRES_PASSWORD=Txn#Service24
     volumes:
       - ./logs/transactions:/var/log/nginx
-
-  transactions-route:
-    image: alpine:3.19
-    network_mode: "service:transactions"
-    cap_add: [NET_ADMIN]
-    command: ["sh", "-c", "apk add --no-cache iproute2 >/dev/null 2>&1 && ip route replace 10.10.0.0/16 via 10.10.2.250"]
-    depends_on: [transactions, router]
-    restart: "no"
 
   # --- Third-party vendor/supply-chain portal (app tier)
   supply-chain:
     build: ./services/supply-chain
     container_name: bank-supply-chain
     hostname: supply-chain
+    cap_add: [NET_ADMIN]
     networks:
       app-tier: { ipv4_address: 10.10.2.12 }
     depends_on: [router]
+    environment:
+      - POSTGRES_HOST=10.10.3.10
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=supply_chain
+      - POSTGRES_USER=supply_chain_svc
+      - POSTGRES_PASSWORD=vendor123
+      - SECRET_KEY=supply-chain-dev-secret-change-me
     volumes:
       - ./logs/supply-chain:/var/log/nginx
-
-  supply-chain-route:
-    image: alpine:3.19
-    network_mode: "service:supply-chain"
-    cap_add: [NET_ADMIN]
-    command: ["sh", "-c", "apk add --no-cache iproute2 >/dev/null 2>&1 && ip route replace 10.10.0.0/16 via 10.10.2.250"]
-    depends_on: [supply-chain, router]
-    restart: "no"
 
   # --- Shared Postgres cluster (data tier). Trust auth = no password
   # required on the wire once you can reach port 5432, on top of the
   # weak per-database creds seeded in init.sql.
   postgres:
-    image: postgres:16
+    build: ./postgres
     container_name: bank-postgres
     hostname: postgres
+    cap_add: [NET_ADMIN]
     environment:
       - POSTGRES_HOST_AUTH_METHOD=trust
       - POSTGRES_DB=postgres
@@ -143,14 +151,6 @@ services:
     networks:
       data-tier: { ipv4_address: 10.10.3.10 }
     depends_on: [router]
-
-  postgres-route:
-    image: alpine:3.19
-    network_mode: "service:postgres"
-    cap_add: [NET_ADMIN]
-    command: ["sh", "-c", "apk add --no-cache iproute2 >/dev/null 2>&1 && ip route replace 10.10.0.0/16 via 10.10.3.250"]
-    depends_on: [postgres, router]
-    restart: "no"
 
   node-exporter:
     image: prom/node-exporter:v1.8.1

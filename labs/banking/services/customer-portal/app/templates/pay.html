@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Pay a Bill</h2>
+  <form class="stacked" method="post">
+    <label>From account</label>
+    <select name="account_id" required>
+      {% for acct in accounts %}
+      <option value="{{ acct.account_id }}">{{ acct.iban }} (${{ acct.balance_cents | money }})</option>
+      {% endfor %}
+    </select>
+    <label>Payee</label>
+    <input type="text" name="payee" maxlength="128" required>
+    <label>Amount (USD)</label>
+    <input type="number" name="amount" step="0.01" min="0.01" required>
+    <button type="submit">Pay</button>
+  </form>
+</div>
+<div class="card">
+  <h2>Recent Payments</h2>
+  <table>
+    <tr><th>Date</th><th>Payee</th><th>Amount</th></tr>
+    {% for p in payments %}
+    <tr>
+      <td>{{ p.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>{{ p.payee }}</td>
+      <td>${{ p.amount_cents | money }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">No payments yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

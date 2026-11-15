@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="login-wrap">
+  <h1>{{ bank_name }}</h1>
+  <div class="card">
+    <h2>Open a New Account</h2>
+    <form class="stacked" method="post">
+      <label>Full name</label>
+      <input type="text" name="full_name" required autofocus>
+      <label>Username</label>
+      <input type="text" name="username" required>
+      <label>Password</label>
+      <input type="password" name="password" required>
+      <button type="submit">Create account</button>
+    </form>
+    <p class="muted">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+  </div>
+</div>
+{% endblock %}

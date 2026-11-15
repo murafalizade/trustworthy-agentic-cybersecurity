@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Users</h2>
+  <table>
+    <tr><th>ID</th><th>Username</th><th>Full name</th><th>Role</th><th>Total balance</th><th></th></tr>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.id }}</td>
+      <td>{{ u.username }}</td>
+      <td>{{ u.full_name }}</td>
+      <td>{{ u.role }}</td>
+      <td>${{ u.total_balance_cents | money }}</td>
+      <td>
+        {% if u.role != 'admin' %}
+        <form class="inline-form" method="post" action="{{ url_for('admin_delete_user', user_id=u.id) }}"
+              onsubmit="return confirm('Delete {{ u.username }}? This removes their accounts and cards too.');">
+          <button type="submit" class="danger">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

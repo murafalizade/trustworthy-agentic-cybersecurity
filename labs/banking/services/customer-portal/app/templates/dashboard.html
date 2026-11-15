@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="color:#0b3d66;">Your Accounts</h2>
+{% for acct in accounts %}
+<div class="card account-box">
+  <div class="muted">IBAN {{ acct.iban }}</div>
+  <div class="balance">${{ acct.balance_cents | money }}</div>
+  <h2>Cards</h2>
+  <table>
+    <tr><th>Card number</th><th>Expiry</th></tr>
+    {% for card in cards_by_account.get(acct.account_id, []) %}
+    <tr><td>{{ card.card_number | mask_card }}</td><td>{{ card.expiry }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<div class="card">No accounts yet.</div>
+{% endfor %}
+{% endblock %}

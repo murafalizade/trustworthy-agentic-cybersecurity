@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>All Accounts</h2>
+  <table>
+    <tr><th>ID</th><th>Owner</th><th>IBAN</th><th>Balance</th><th>Adjust</th></tr>
+    {% for a in accounts %}
+    <tr>
+      <td>{{ a.account_id }}</td>
+      <td>{{ a.username }}</td>
+      <td>{{ a.iban }}</td>
+      <td>${{ a.balance_cents | money }}</td>
+      <td>
+        <form class="inline-form" method="post" action="{{ url_for('admin_adjust_balance', account_id=a.account_id) }}">
+          <input type="number" name="new_balance" step="0.01" style="width:110px;display:inline;"
+                 value="{{ '%.2f' % (a.balance_cents / 100) }}">
+          <button type="submit">Set</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

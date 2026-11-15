@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ bank_name }}{% if title %} - {{ title }}{% endif %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% if session.get('user_id') %}
+<header class="topbar">
+  <div class="brand">{{ bank_name }}</div>
+  <div>{{ session.get('username') }} &middot; <a href="{{ url_for('logout') }}" style="color:#d9e8f5;">Log out</a></div>
+</header>
+<nav class="mainnav">
+  {% if session.get('role') == 'admin' %}
+    <a href="{{ url_for('admin_dashboard') }}">Overview</a>
+    <a href="{{ url_for('admin_users') }}">Users</a>
+    <a href="{{ url_for('admin_accounts') }}">Accounts</a>
+    <a href="{{ url_for('admin_complaints') }}">Complaints</a>
+    <a href="{{ url_for('admin_loans') }}">Loans</a>
+  {% else %}
+    <a href="{{ url_for('dashboard') }}">Dashboard</a>
+    <a href="{{ url_for('transfer') }}">Transfer</a>
+    <a href="{{ url_for('pay') }}">Pay a bill</a>
+    <a href="{{ url_for('loans') }}">Loans</a>
+    <a href="{{ url_for('complaints') }}">Support</a>
+  {% endif %}
+</nav>
+{% endif %}
+<div class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

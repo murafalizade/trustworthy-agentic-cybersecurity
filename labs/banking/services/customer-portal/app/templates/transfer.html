@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Send Money</h2>
+  <form class="stacked" method="post">
+    <label>From account</label>
+    <select name="from_account_id" required>
+      {% for acct in accounts %}
+      <option value="{{ acct.account_id }}">{{ acct.iban }} (${{ acct.balance_cents | money }})</option>
+      {% endfor %}
+    </select>
+    <label>Recipient IBAN</label>
+    <input type="text" name="to_iban" required>
+    <label>Amount (USD)</label>
+    <input type="number" name="amount" step="0.01" min="0.01" required>
+    <label>Note (optional)</label>
+    <input type="text" name="note" maxlength="256">
+    <button type="submit">Send</button>
+  </form>
+</div>
+{% endblock %}

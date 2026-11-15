@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Bank Overview</h2>
+  <table>
+    <tr><th>Customers</th><td>{{ stats.customers }}</td></tr>
+    <tr><th>Accounts</th><td>{{ stats.accounts }}</td></tr>
+    <tr><th>Total deposits</th><td>${{ stats.total_balance_cents | money }}</td></tr>
+    <tr><th>Open support tickets</th><td>{{ stats.open_complaints }}</td></tr>
+    <tr><th>Pending loan applications</th><td>{{ stats.pending_loans }}</td></tr>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #f2f4f7;
+  color: #1a2233;
+}
+header.topbar {
+  background: #0b3d66;
+  color: #fff;
+  padding: 14px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+header.topbar .brand { font-size: 1.25rem; font-weight: 600; }
+nav.mainnav {
+  background: #0f4c81;
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+}
+nav.mainnav a {
+  color: #d9e8f5;
+  text-decoration: none;
+  padding: 12px 16px;
+  font-size: 0.92rem;
+}
+nav.mainnav a:hover { background: #0b3d66; color: #fff; }
+.container { max-width: 960px; margin: 24px auto; padding: 0 20px; }
+.card {
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+.card h2 { margin-top: 0; font-size: 1.1rem; color: #0b3d66; }
+table { width: 100%; border-collapse: collapse; }
+table th, table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e9ef;
+  font-size: 0.92rem;
+}
+table th { color: #556; font-weight: 600; }
+.balance { font-size: 1.6rem; font-weight: 700; color: #0b3d66; }
+form.stacked label { display: block; margin: 10px 0 4px; font-size: 0.88rem; color: #445; }
+form.stacked input, form.stacked select, form.stacked textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #ccd3dc;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+form.stacked textarea { resize: vertical; min-height: 80px; }
+button, .btn {
+  background: #0f4c81;
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 4px;
+  font-size: 0.92rem;
+  cursor: pointer;
+  margin-top: 14px;
+}
+button:hover, .btn:hover { background: #0b3d66; }
+button.danger { background: #a3302b; }
+button.danger:hover { background: #7f251f; }
+.flash { padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; font-size: 0.92rem; }
+.flash.success { background: #e3f3e6; color: #1f6d33; border: 1px solid #bfe3c6; }
+.flash.error { background: #fbe7e6; color: #9c2d26; border: 1px solid #f3c3c0; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.78rem; }
+.badge.open, .badge.pending { background: #fdecc8; color: #8a5a00; }
+.badge.resolved, .badge.approved { background: #e3f3e6; color: #1f6d33; }
+.badge.rejected { background: #fbe7e6; color: #9c2d26; }
+.login-wrap { max-width: 380px; margin: 60px auto; }
+.login-wrap h1 { text-align: center; color: #0b3d66; font-size: 1.4rem; }
+.muted { color: #778; font-size: 0.85rem; }
+.inline-form { display: inline; }
+.account-box { border: 1px solid #e5e9ef; border-radius: 6px; padding: 16px; margin-bottom: 14px; }

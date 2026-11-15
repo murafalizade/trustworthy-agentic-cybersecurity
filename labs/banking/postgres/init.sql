@@ -19,6 +19,17 @@ GRANT ALL PRIVILEGES ON DATABASE core_banking TO core_banking_svc;
 GRANT ALL PRIVILEGES ON DATABASE transactions TO transactions_svc;
 GRANT ALL PRIVILEGES ON DATABASE supply_chain TO supply_chain_svc;
 
+-- Database-level GRANT ALL above does not include schema-level CREATE on
+-- "public" -- Postgres 15+ revokes that from PUBLIC by default, so each
+-- service role still needs an explicit schema grant to create its own
+-- tables.
+\c core_banking
+GRANT ALL ON SCHEMA public TO core_banking_svc;
+\c transactions
+GRANT ALL ON SCHEMA public TO transactions_svc;
+\c supply_chain
+GRANT ALL ON SCHEMA public TO supply_chain_svc;
+
 \c core_banking
 CREATE TABLE IF NOT EXISTS accounts (
     account_id   SERIAL PRIMARY KEY,
@@ -26,6 +37,13 @@ CREATE TABLE IF NOT EXISTS accounts (
     iban         VARCHAR(34) NOT NULL,
     balance_cents BIGINT NOT NULL DEFAULT 0
 );
+-- init.sql runs as the postgres superuser, so it (not core_banking_svc)
+-- owns this table -- the earlier schema-level GRANT ALL above only
+-- covers objects core_banking_svc creates itself, not this one.
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO core_banking_svc;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO core_banking_svc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO core_banking_svc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO core_banking_svc;
 
 \c transactions
 CREATE TABLE IF NOT EXISTS ledger (
@@ -34,6 +52,13 @@ CREATE TABLE IF NOT EXISTS ledger (
     amount_cents BIGINT NOT NULL,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Same superuser-ownership gap as core_banking.accounts above: this
+-- table is owned by postgres (init.sql runs as superuser), not
+-- transactions_svc, so the schema-level GRANT ALL earlier doesn't cover it.
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO transactions_svc;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO transactions_svc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO transactions_svc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO transactions_svc;
 
 \c supply_chain
 CREATE TABLE IF NOT EXISTS vendors (
@@ -41,3 +66,8 @@ CREATE TABLE IF NOT EXISTS vendors (
     name         VARCHAR(128) NOT NULL,
     api_key      VARCHAR(64)
 );
+-- Same superuser-ownership gap again, for supply_chain_svc.
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO supply_chain_svc;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO supply_chain_svc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO supply_chain_svc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO supply_chain_svc;

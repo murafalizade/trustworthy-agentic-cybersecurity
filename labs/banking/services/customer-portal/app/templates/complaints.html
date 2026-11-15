@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Contact Support</h2>
+  <form class="stacked" method="post">
+    <label>Subject</label>
+    <input type="text" name="subject" maxlength="128" required>
+    <label>Message</label>
+    <textarea name="message" required></textarea>
+    <button type="submit">Submit</button>
+  </form>
+</div>
+<div class="card">
+  <h2>Your Support Tickets</h2>
+  <table>
+    <tr><th>Date</th><th>Subject</th><th>Status</th></tr>
+    {% for c in complaints %}
+    <tr>
+      <td>{{ c.created_at.strftime('%Y-%m-%d') }}</td>
+      <td>{{ c.subject }}</td>
+      <td><span class="badge {{ c.status }}">{{ c.status }}</span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">No tickets yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
