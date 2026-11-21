@@ -4,8 +4,10 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from pydantic import ValidationError
 
-from cybersecurity_agent.agents.id_agent.model import AnomalyVerdict
-from cybersecurity_agent.agents.id_agent.prompt import ANOMALY_DETECTION_PROMPT
+import json
+
+from cybersecurity_agent.agents.id_agent.model import AnomalyVerdict, WindowTriage
+from cybersecurity_agent.agents.id_agent.prompt import ANOMALY_DETECTION_PROMPT, WINDOW_TRIAGE_PROMPT
 from cybersecurity_agent.agents.id_agent.tools import (
     # check_event_frequency,
     check_unusual_hour,
@@ -25,7 +27,7 @@ _MAX_TOOL_ITERATIONS = 4
 # final structured-output call, and `with_structured_output` silently
 # returns None instead of raising (see its docstring) - so this has to be
 # generous enough to leave room for reasoning AND the final verdict.
-_MAX_COMPLETION_TOKENS = 2048
+_MAX_COMPLETION_TOKENS = 4096
 _MAX_DECISION_RETRIES = 1
 
 class IDAgent:
@@ -60,6 +62,9 @@ class IDAgent:
         self._tools_by_name = {t.name: t for t in self._tools}
         self.tool_llm = self.llm.bind_tools(self._tools)
         self.decision_llm = self.llm.with_structured_output(AnomalyVerdict)
+        # Separate structured binding for the batched window pass -- returns a
+        # list of per-IP verdicts in one call (see triage_window).
+        self.window_llm = self.llm.with_structured_output(WindowTriage)
 
     def analyze_log(self, log_text: str) -> AnomalyVerdict:
         """Runs the triage conversation for one log entry/batch, letting the
@@ -113,3 +118,70 @@ class IDAgent:
                 "output or the manual JSON fallback - treat this as 'unknown', not 'no anomaly'."
             )
         return verdict
+
+    def triage_window(self, ip_reports: list[dict]) -> WindowTriage:
+        """Judge a whole window of flagged source IPs in ONE LLM call.
+
+        `ip_reports` is the list of per-IP summaries (counts, status
+        histograms, Suricata signatures, a few raw sample lines, and the
+        deterministic ip_classification/signature_matches enrichment) built by
+        es_source.ESLogSource. The deterministic grounding is already embedded
+        in each report, so unlike analyze_log this does no tool round-trips --
+        it's a single structured-output call returning a verdict per IP.
+
+        The reports are passed only inside the prompt's clearly-delimited,
+        explicitly-labelled untrusted-data block (see prompt.py) -- never
+        concatenated into instruction text -- so crafted log content stays
+        inert data, not a directive.
+        """
+        if not ip_reports:
+            return WindowTriage(verdicts=[])
+
+        window_json = json.dumps(ip_reports, default=str, indent=2)
+        messages = WINDOW_TRIAGE_PROMPT.format_messages(window_json=window_json)
+
+        # Plain completion + manual JSON parse rather than with_structured_output:
+        # several NVIDIA NIM models (e.g. nemotron) reject the `guided_json`
+        # parameter that structured output sends, 400-ing the whole call. Asking
+        # for JSON in the prompt and parsing it ourselves is model-agnostic.
+        # For an IDS a dropped verdict is a false negative, so retry on a bad
+        # parse before giving up rather than silently returning "nothing found".
+        last_err = None
+        for _ in range(_MAX_DECISION_RETRIES + 1):
+            response = self.llm.invoke(messages)
+            parsed = self._parse_window_json(getattr(response, "content", "") or "")
+            if parsed is not None:
+                return parsed
+            last_err = response
+            messages.append(response if hasattr(response, "content") else HumanMessage(content=str(response)))
+            messages.append(HumanMessage(
+                content="That was not valid. Return ONLY a single JSON object matching the "
+                        "WindowTriage schema (a 'verdicts' array, one entry per source_ip), "
+                        "with no prose and no markdown fences."
+            ))
+
+        raise RuntimeError(
+            "IDAgent could not parse a WindowTriage from the model response - treat this window "
+            f"as 'unknown', not 'no anomaly'. Last response: {getattr(last_err, 'content', last_err)!r}"
+        )
+
+    @staticmethod
+    def _parse_window_json(text: str) -> Optional[WindowTriage]:
+        """Pull a WindowTriage out of a raw model completion: strip markdown
+        fences, isolate the outermost JSON object, validate. Returns None on
+        any failure so the caller can retry."""
+        if not text:
+            return None
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```", 2)[1] if cleaned.count("```") >= 2 else cleaned.strip("`")
+            if cleaned.lstrip().lower().startswith("json"):
+                cleaned = cleaned.lstrip()[4:]
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start == -1 or end == -1 or end < start:
+            return None
+        try:
+            data = json.loads(cleaned[start:end + 1])
+            return WindowTriage.model_validate(data)
+        except (json.JSONDecodeError, ValidationError):
+            return None

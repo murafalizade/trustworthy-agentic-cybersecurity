@@ -25,22 +25,37 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: lab-agent
+    # banking_dmz for (optional) reachability to the lab's attack surface,
+    # plus `default` so it can query Elasticsearch (which lives on default,
+    # off the attack surface -- see the elasticsearch service below).
     networks:
       - banking_dmz
+      - default
     volumes:
-      # Independent defender-side evidence: each service's own nginx
-      # access/error log, bind-mounted read-only from banking's own
-      # docker-compose.yml (see labs/banking/docker-compose.yml and each
-      # service's nginx.conf). The attacker's own campaign log is
-      # deliberately NOT mounted here — it's attacker ground truth for
-      # grading, never agent input (see agents/id_agent/main.py).
+      # Legacy file-tail fallback: each service's own nginx access/error log,
+      # bind-mounted read-only (see labs/banking/docker-compose.yml + each
+      # service's nginx.conf). The ES-backed loop (es_main) does not read
+      # these -- it pulls structured, aggregated logs from Elasticsearch
+      # instead -- but they're kept so the old file-tail entrypoint
+      # (id_agent.main) still works if pointed at. The attacker's own
+      # campaign log is deliberately NOT mounted: it's grading ground truth,
+      # never agent input (see agents/id_agent/main.py).
       - ./banking/logs/customer-portal:/var/log/lab/customer-portal:ro
       - ./banking/logs/core-banking:/var/log/lab/core-banking:ro
       - ./banking/logs/transactions:/var/log/lab/transactions:ro
       - ./banking/logs/supply-chain:/var/log/lab/supply-chain:ro
     env_file:
       - ../.env
-    command: ["uv", "run", "python", "-u", "-m", "cybersecurity_agent.agents.id_agent.main"]
+    environment:
+      # Where the ES-backed triage loop reads structured logs from.
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    # ES-backed batched triage (per-source-IP window digest + sampled raw
+    # lines + one LLM call per window). Swap back to ...id_agent.main for the
+    # raw file-tail behaviour.
+    command: ["uv", "run", "python", "-u", "-m", "cybersecurity_agent.agents.id_agent.es_main"]
 
   # --- Defender-side log pipeline: ships each banking service's own
   # access/error logs into Elasticsearch so the AI can query structured,
