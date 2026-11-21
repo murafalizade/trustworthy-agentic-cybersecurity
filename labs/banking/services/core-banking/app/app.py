@@ -5,7 +5,12 @@ import psycopg2
 import psycopg2.extras
 from flask import Flask, g, jsonify, request
 
+from requestlog import init_request_logging
+
 app = Flask(__name__)
+
+# One structured application-log line per request (see requestlog.py).
+init_request_logging(app, "core-banking")
 
 DB_CONFIG = dict(
     host=os.environ.get("POSTGRES_HOST", "10.10.3.10"),

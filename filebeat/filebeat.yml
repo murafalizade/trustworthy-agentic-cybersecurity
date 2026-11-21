@@ -1,14 +1,28 @@
 ###############################################################################
-# Ships the 4 banking services' nginx logs into Elasticsearch.
+# Ships the 4 banking services' logs into Elasticsearch, three layers deep:
 #
-# access.log is already structured JSON (see each service's nginx.conf,
-# json_analytics log_format) and is decoded as-is. error.log is nginx's
-# fixed native text format -- it is NOT JSON at the source, so it is parsed
-# into structured fields server-side by the banking-error-pipeline ingest
-# pipeline instead (see ../filebeat/pipelines/banking-error-pipeline.json).
+#   access.log       nginx proxy layer -- already structured JSON (see each
+#                    service's nginx.conf json_analytics log_format), decoded
+#                    as-is into banking-access-*.
+#   error.log        nginx's fixed native text format -- NOT JSON at source, so
+#                    parsed server-side by banking-error-pipeline into
+#                    banking-error-*.
+#   application.log  Flask application layer -- one structured JSON line per
+#                    request emitted by each app's requestlog.py middleware
+#                    (request_id/method/url/query/headers/body, password
+#                    redacted), decoded as-is into banking-application-*.
+#
+# The application.log lands in the same labs/banking/logs/<service>/ dir the
+# services already bind-mount for nginx, so no extra container volume is needed
+# -- Filebeat sees it under /var/log/banking/<service>/application.log.
+#
+# Monitoring noise (health polls, nginx_status, favicon) is dropped from the
+# access layer below so it doesn't dilute anomaly baselines or duplicate the
+# application layer.
 ###############################################################################
 
 filebeat.inputs:
+  # --- customer-portal ----------------------------------------------------
   - type: log
     id: customer-portal-access
     paths: ["/var/log/banking/customer-portal/access.log"]
@@ -20,12 +34,15 @@ filebeat.inputs:
       log_type: access
     fields_under_root: true
     pipeline: banking-access-pipeline
-    # Drop the /api/health poller noise so it doesn't dilute anomaly baselines.
+    # Drop monitoring noise (health poller, nginx stub_status, favicon) so it
+    # doesn't dilute anomaly baselines or duplicate the application layer.
     processors:
       - drop_event:
           when:
-            equals:
-              request_uri: /api/health
+            or:
+              - equals: { request_uri: /api/health }
+              - equals: { request_uri: /nginx_status }
+              - equals: { request_uri: /favicon.ico }
 
   - type: log
     id: customer-portal-error
@@ -37,6 +54,19 @@ filebeat.inputs:
     pipeline: banking-error-pipeline
 
   - type: log
+    id: customer-portal-application
+    paths: ["/var/log/banking/customer-portal/application.log"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: customer-portal
+      log_type: application
+    fields_under_root: true
+    pipeline: banking-application-pipeline
+
+  # --- core-banking -------------------------------------------------------
+  - type: log
     id: core-banking-access
     paths: ["/var/log/banking/core-banking/access.log"]
     json.keys_under_root: true
@@ -47,6 +77,13 @@ filebeat.inputs:
       log_type: access
     fields_under_root: true
     pipeline: banking-access-pipeline
+    processors:
+      - drop_event:
+          when:
+            or:
+              - equals: { request_uri: /api/health }
+              - equals: { request_uri: /nginx_status }
+              - equals: { request_uri: /favicon.ico }
 
   - type: log
     id: core-banking-error
@@ -58,6 +95,26 @@ filebeat.inputs:
     pipeline: banking-error-pipeline
 
   - type: log
+    id: core-banking-application
+    paths: ["/var/log/banking/core-banking/application.log"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: core-banking
+      log_type: application
+    fields_under_root: true
+    pipeline: banking-application-pipeline
+    # Internal account-management API: health is the app's own Flask route
+    # here, so the poll shows up in application.log too -- drop it to match the
+    # access layer and keep the app dataset to real API calls.
+    processors:
+      - drop_event:
+          when:
+            equals: { path: /api/health }
+
+  # --- transactions -------------------------------------------------------
+  - type: log
     id: transactions-access
     paths: ["/var/log/banking/transactions/access.log"]
     json.keys_under_root: true
@@ -68,6 +125,13 @@ filebeat.inputs:
       log_type: access
     fields_under_root: true
     pipeline: banking-access-pipeline
+    processors:
+      - drop_event:
+          when:
+            or:
+              - equals: { request_uri: /api/health }
+              - equals: { request_uri: /nginx_status }
+              - equals: { request_uri: /favicon.ico }
 
   - type: log
     id: transactions-error
@@ -79,6 +143,23 @@ filebeat.inputs:
     pipeline: banking-error-pipeline
 
   - type: log
+    id: transactions-application
+    paths: ["/var/log/banking/transactions/application.log"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: transactions
+      log_type: application
+    fields_under_root: true
+    pipeline: banking-application-pipeline
+    processors:
+      - drop_event:
+          when:
+            equals: { path: /api/health }
+
+  # --- supply-chain -------------------------------------------------------
+  - type: log
     id: supply-chain-access
     paths: ["/var/log/banking/supply-chain/access.log"]
     json.keys_under_root: true
@@ -89,6 +170,13 @@ filebeat.inputs:
       log_type: access
     fields_under_root: true
     pipeline: banking-access-pipeline
+    processors:
+      - drop_event:
+          when:
+            or:
+              - equals: { request_uri: /api/health }
+              - equals: { request_uri: /nginx_status }
+              - equals: { request_uri: /favicon.ico }
 
   - type: log
     id: supply-chain-error
@@ -99,6 +187,23 @@ filebeat.inputs:
     fields_under_root: true
     pipeline: banking-error-pipeline
 
+  - type: log
+    id: supply-chain-application
+    paths: ["/var/log/banking/supply-chain/application.log"]
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      service: supply-chain
+      log_type: application
+    fields_under_root: true
+    pipeline: banking-application-pipeline
+    processors:
+      - drop_event:
+          when:
+            equals: { path: /api/health }
+
+  # --- router (network IDS) -----------------------------------------------
   # Network-layer IDS feed: Suricata on bank-router sees cross-segment
   # traffic (dmz/app-tier/data-tier/mgmt) that none of the services' own
   # nginx logs do -- see labs/banking/router-suricata/suricata.yaml and
@@ -126,9 +231,16 @@ output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
   index: "banking-%{[log_type]}-%{+yyyy.MM.dd}"
 
-setup.template.name: "banking-nginx"
-setup.template.pattern: "banking-*"
-setup.template.enabled: true
+# We manage the index templates ourselves (one per log_type, installed by
+# filebeat/setup.sh with priority 500 and specific banking-access-*/error-*/
+# application-*/network-* patterns). Filebeat must NOT also install its own
+# template: its default template is data-stream-enabled and, with a broad
+# banking-* pattern, races our per-type templates at startup and can hijack a
+# banking-<type>-* index into a `.ds-banking-nginx-*` data stream instead
+# -- which then shows up in Kibana as a stray "nginx" source while the real
+# banking-network-* view looks empty. Disabling template/ILM management here
+# leaves our setup.sh templates as the only ones that match.
+setup.template.enabled: false
 setup.ilm.enabled: false
 
 logging.level: info

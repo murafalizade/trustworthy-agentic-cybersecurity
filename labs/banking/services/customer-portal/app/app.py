@@ -8,8 +8,13 @@ import psycopg2.extras
 from flask import Flask, g, redirect, render_template, request, session, url_for, flash, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from requestlog import init_request_logging
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "customer-portal-dev-secret-change-me")
+
+# One structured application-log line per request (see requestlog.py).
+init_request_logging(app, "customer-portal")
 
 DB_CONFIG = dict(
     host=os.environ.get("POSTGRES_HOST", "10.10.3.10"),

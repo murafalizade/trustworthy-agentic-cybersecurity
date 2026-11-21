@@ -6,8 +6,13 @@ import psycopg2.extras
 from flask import Flask, g, redirect, render_template_string, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from requestlog import init_request_logging
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supply-chain-dev-secret-change-me")
+
+# One structured application-log line per request (see requestlog.py).
+init_request_logging(app, "supply-chain")
 
 DB_CONFIG = dict(
     host=os.environ.get("POSTGRES_HOST", "10.10.3.10"),

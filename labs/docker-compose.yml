@@ -77,6 +77,27 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -s http://localhost:5601/api/status | grep -q '"level":"available"'
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Creates the Kibana data views (banking-access-*/error-*/network-*) that
+  # make the shipped logs visible in Kibana Discover. Elasticsearch ingestion
+  # (filebeat-setup + filebeat) gets the data in; without this step it's in
+  # Elasticsearch but invisible in Kibana. Runs once, after Kibana is up.
+  kibana-setup:
+    image: curlimages/curl:8.9.1
+    container_name: lab-kibana-setup
+    volumes:
+      - ../filebeat:/filebeat:ro
+    entrypoint: ["sh", "/filebeat/kibana-setup.sh"]
+    depends_on:
+      kibana:
+        condition: service_healthy
 
   filebeat-setup:
     image: curlimages/curl:8.9.1

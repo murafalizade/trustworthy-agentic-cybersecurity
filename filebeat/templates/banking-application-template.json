@@ -1,0 +1,39 @@
+{
+  "index_patterns": ["banking-application-*"],
+  "priority": 500,
+  "template": {
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "service": { "type": "keyword" },
+        "log_type": { "type": "keyword" },
+        "request_id": { "type": "keyword" },
+        "method": { "type": "keyword" },
+        "url": {
+          "type": "text",
+          "fields": { "keyword": { "type": "keyword", "ignore_above": 1024 } }
+        },
+        "path": { "type": "keyword" },
+        "query": { "type": "flattened" },
+        "headers": { "type": "flattened" },
+        "body": { "type": "flattened" },
+        "remote_addr": { "type": "keyword" },
+        "x_forwarded_for": { "type": "keyword" },
+        "user_agent": {
+          "type": "text",
+          "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } }
+        },
+        "status": { "type": "integer" },
+        "duration_ms": { "type": "float" },
+        "error": {
+          "properties": {
+            "message": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 1024 } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
