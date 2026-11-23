@@ -21,13 +21,30 @@ settings = get_settings()
 
 _MAX_TOOL_ITERATIONS = 4
 
-# Reasoning models (e.g. gpt-oss) spend a large share of their completion
-# budget on hidden reasoning_content before writing the actual answer. Too
-# low a budget here means the real content gets truncated mid-JSON on the
-# final structured-output call, and `with_structured_output` silently
-# returns None instead of raising (see its docstring) - so this has to be
-# generous enough to leave room for reasoning AND the final verdict.
-_MAX_COMPLETION_TOKENS = 4096
+# Reasoning models spend a large share of their completion budget on hidden
+# reasoning_content before writing the actual answer. At 4096 the reasoning
+# alone exhausted it: finish_reason="length", truncated reasoning_content,
+# content="" - which looks identical to "the model answered garbage" at the
+# parse site. This has to leave room for reasoning AND the final verdict.
+#
+# Measured: a one-IP window uses ~1600 output tokens (1056 of them
+# reasoning) and returns finish_reason="stop", so this ceiling is NOT
+# binding for mistral-large - it is pure headroom for bigger windows.
+# Raising it does not slow anything down; only tokens actually generated
+# cost wall clock.
+_MAX_COMPLETION_TOKENS = 10000
+
+# ChatNVIDIA's client defaults to a 60s read timeout, and a non-streaming
+# call returns NOTHING until the last token is generated -> the 60s default
+# fires long before the answer exists (requests.ReadTimeout).
+#
+# Measured against mistralai/mistral-large-4-1t-a52b on a ONE-IP window:
+#   raw llm.invoke  -> 170.8s for 1604 output tokens = ~9.4 tok/s
+#   triage_window   -> 257.6s end to end
+# That 9.4 tok/s is the real constraint, and latency varies a lot run to
+# run (171s vs 258s for comparable output), so the ceiling needs headroom
+# well past the observed worst case rather than hugging it.
+_REQUEST_TIMEOUT = 600
 _MAX_DECISION_RETRIES = 1
 
 class IDAgent:
@@ -42,6 +59,7 @@ class IDAgent:
         self,
         model_name: str = "meta/llama-3.1-8b-instruct",
         on_event: Optional[Callable[[dict], None]] = None,
+        thinking: bool = False,
     ):
         self.on_event = on_event
         self.model_name = model_name
@@ -50,6 +68,9 @@ class IDAgent:
             api_key=settings.NVIDIA_API_KEY.get_secret_value(),
             temperature=0.1,
             max_completion_tokens=_MAX_COMPLETION_TOKENS,
+            # Transport option, not a model param: ChatNVIDIA pops `timeout`
+            # out of kwargs and forwards it to the underlying client.
+            timeout=_REQUEST_TIMEOUT,
         )
 
         self._tools = [
@@ -138,6 +159,7 @@ class IDAgent:
             return WindowTriage(verdicts=[])
 
         window_json = json.dumps(ip_reports, default=str, indent=2)
+        print(window_json, "request")
         messages = WINDOW_TRIAGE_PROMPT.format_messages(window_json=window_json)
 
         # Plain completion + manual JSON parse rather than with_structured_output:
@@ -149,6 +171,7 @@ class IDAgent:
         last_err = None
         for _ in range(_MAX_DECISION_RETRIES + 1):
             response = self.llm.invoke(messages)
+            print(response, "RESPONSEEEE")
             parsed = self._parse_window_json(getattr(response, "content", "") or "")
             if parsed is not None:
                 return parsed
